@@ -7,6 +7,6 @@ module.exports = {
     path: path.resolve(__dirname, 'assets/javascripts')
   },
   devServer: {
-    contentBase: './assets',
+    contentBase: './',
   },
 };
