@@ -3,7 +3,7 @@ assets/javascripts/*
 !assets/index.html
 
 # Jekyll
-public
+docs/*
 assets/.jekyll-cache/*
 
 # Logs

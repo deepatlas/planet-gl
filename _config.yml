@@ -1,3 +1,4 @@
 source: assets
 layouts_dir: assets
-destination: public
+destination: docs
+
