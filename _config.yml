@@ -1,0 +1,3 @@
+source: assets
+layouts_dir: assets
+destination: public

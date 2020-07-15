@@ -2,6 +2,10 @@
 assets/javascripts/*
 !assets/index.html
 
+# Jekyll
+public
+assets/.jekyll-cache/*
+
 # Logs
 logs
 *.log
