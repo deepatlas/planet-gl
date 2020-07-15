@@ -1,6 +1,6 @@
 # application specific
-dist/*
-!dist/index.html
+assets/javascripts/*
+!assets/index.html
 
 # Logs
 logs
