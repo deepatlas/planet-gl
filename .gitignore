@@ -1,5 +1,5 @@
 # application specific
-assets/javascripts/*
+assets/*
 !assets/index.html
 
 # Jekyll

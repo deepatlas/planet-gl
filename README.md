@@ -4,17 +4,29 @@ Build the earth with WebGL, experiment and have fun
 
 ## Deployment
 
-Followed [this description](https://github.com/allizad/jekyll-webpack) to setup Jekyll and the project structure for Github pages  
+    npm run build
+    npm run deploy
 
-Install Jekyll
+## Test with Jekyll
+
+If you want to test the page as it's run on Github:
+
+Install Jekyll and update bundler
 
     gem install jekyll
 
+Update and run bundler 
+
+    gem update bundler
+    bundle install
+
 Jekyll configuration is stored in `_config.yml`
 
-Test Jekyll buid
+Build and view the website with Jekyll 
 
-    jekyll build
+    npm run build
+    bundle exec jekyll serve
 
-Open `public/index.html`
+Open http://127.0.0.1:4000/assets/
+
 

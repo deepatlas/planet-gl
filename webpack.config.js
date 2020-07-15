@@ -4,10 +4,10 @@ module.exports = {
   entry: './src/index.js',
   output: {
     filename: 'main.js',
-    path: path.resolve(__dirname, 'assets/javascripts'),
-    publicPath: '/assets/javascripts'
+    path: path.resolve(__dirname, 'assets'),
+    publicPath: "/planet-gl/"
   },
   devServer: {
-    contentBase: './',
+    contentBase: './assets',
   },
 };
