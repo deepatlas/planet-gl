@@ -1,3 +1,7 @@
+# application specific
+dist/*
+!dist/index.html
+
 # Logs
 logs
 *.log
@@ -80,7 +84,6 @@ typings/
 
 # Nuxt.js build / generate output
 .nuxt
-dist
 
 # Gatsby files
 .cache/
