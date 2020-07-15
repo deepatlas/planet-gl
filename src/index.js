@@ -3,7 +3,7 @@ import * as THREE from 'three';
 var createSphere = function(){
 
     var geometry = new THREE.SphereGeometry(2, 32, 32);
-    var material = new THREE.MeshBasicMaterial( { wireframe: true, color: 0x00ff00 } );
+    var material = new THREE.MeshBasicMaterial( { wireframe: true, color: 0xdd00dd } );
     var sphere = new THREE.Mesh( geometry, material );
     return sphere;
 }
@@ -23,7 +23,7 @@ renderer.setSize( window.innerWidth, window.innerHeight );
 document.body.appendChild( renderer.domElement );
 
 var camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
-camera.position.z = 6;
+camera.position.z = 5;
 
 var sphere = createSphere()
 
