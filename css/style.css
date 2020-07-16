@@ -1,0 +1,36 @@
+#circle {
+    position: absolute;
+    text-align: center;
+    width: 60px;
+    height: 60px;
+    -webkit-border-radius: 30px;
+    -moz-border-radius: 30px;
+    border-radius: 30px;
+    border: 1px solid #7e017e;
+    background: #7c367c;
+    font-size: 50px;
+    font-family: Times New Roman;
+    color: #dd00dd;
+    cursor: pointer;
+  }
+
+  #title {
+    position: absolute;
+    left: 64px;
+    font-family: Arial;
+    font-size:52px;
+    font-weight:bold;
+    font-style:italic;
+    color: #dd00dd;
+  }
+
+  #info {
+    position: absolute;
+    width:62px;
+    height: 62px;
+    top: 25px;
+    left: 25px;
+    overflow: hidden;
+    margin:0;
+    padding: 0
+  }
