@@ -1,10 +1,13 @@
 # application specific
-assets/*
-!assets/index.html
+assets/main.js
 
 # Jekyll
 docs/*
 assets/.jekyll-cache/*
+Gemfile.lock
+
+# Dev tools
+.vscode
 
 # Logs
 logs
