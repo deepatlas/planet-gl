@@ -27,6 +27,7 @@ var createLatitudes = function(){
     var segments = 48;
     var allLatitudesGeom = new THREE.BufferGeometry();
     var allLatitudesPositions = [];
+    var vertices = [];
     var circle = new THREE.CircleGeometry(radius, segments, 0, Math.PI * 2);
     circle.vertices.shift(); // remove first segment
     circle.vertices.push(circle.vertices[0].clone()); // add last segment
@@ -35,7 +36,8 @@ var createLatitudes = function(){
         var geometry_i = circle.clone();
         geometry_i.rotateY(radians(latitudeIntervalDegree) * i);
         for ( var v = 0; v < geometry_i.vertices.length; v ++ ) {
-            var vertex = geometry_i.vertices[ v ]
+            var vertex = geometry_i.vertices[ v ];
+            vertices.push(vertex);
             allLatitudesPositions.push(vertex.x, vertex.y, vertex.z)
         }
 
@@ -43,13 +45,15 @@ var createLatitudes = function(){
     //allLatitudesPositions = allLatitudesPositions.slice(0, -3);
     allLatitudesGeom.setAttribute( 'position', new THREE.Float32BufferAttribute( allLatitudesPositions, 3 ) );
 
-    allLatitudesGeom = new THREE.Geometry().fromBufferGeometry(allLatitudesGeom);
-    var mercatorProjection = createMercatorProjection(allLatitudesGeom.vertices)
-    allLatitudesGeom.morphTargets.push( { name: "mercator projection lines", vertices: mercatorProjection } );
-    allLatitudesGeom = new THREE.BufferGeometry().fromGeometry( allLatitudesGeom ); //the final trick
+    var mercatorProjection = createMercatorProjectionAsPoints(vertices);
+    allLatitudesGeom.morphAttributes.position = [];
+    allLatitudesGeom.morphAttributes.position.push(new THREE.Float32BufferAttribute( mercatorProjection, 3 ));
  
     var material = new THREE.LineBasicMaterial({color: 0xaaff00, scale: 4, morphTargets: true})
     var latitudes = new THREE.Line(allLatitudesGeom, material);
+
+    latitudes.morphTargetInfluences = [];
+    latitudes.morphTargetInfluences[0] = 0;
 
     return latitudes;
 }
