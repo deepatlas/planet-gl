@@ -15,7 +15,12 @@ var createSphere = function(){
     var geometry = new THREE.SphereGeometry(radius-0.01, 32, 32);
     var material = new THREE.MeshPhongMaterial( { color: 0xdddddd, specular: 0x009900, shininess: 30, flatShading: true, morphTargets: true } );
 
-    var mercatorProjection = createMercatorProjection(geometry.vertices)
+    var points = [];
+    for ( var v = 0; v < geometry.vertices.length; v ++ ) {
+        var vertex = geometry.vertices[v];
+        points.push(vertex.x, vertex.y, vertex.z);
+    }
+    var mercatorProjection = createMercatorProjection(points);
     geometry.morphTargets.push( { name: "mercator projection", vertices: mercatorProjection } );
     geometry = new THREE.BufferGeometry().fromGeometry( geometry ); //the final trick
 
@@ -27,7 +32,6 @@ var createLatitudes = function(){
     var segments = 48;
     var allLatitudesGeom = new THREE.BufferGeometry();
     var allLatitudesPositions = [];
-    var vertices = [];
     var circle = new THREE.CircleGeometry(radius, segments, 0, Math.PI * 2);
     circle.vertices.shift(); // remove first segment
     circle.vertices.push(circle.vertices[0].clone()); // add last segment
@@ -37,23 +41,16 @@ var createLatitudes = function(){
         geometry_i.rotateY(radians(latitudeIntervalDegree) * i);
         for ( var v = 0; v < geometry_i.vertices.length; v ++ ) {
             var vertex = geometry_i.vertices[ v ];
-            vertices.push(vertex);
             allLatitudesPositions.push(vertex.x, vertex.y, vertex.z)
         }
 
     }
     //allLatitudesPositions = allLatitudesPositions.slice(0, -3);
     allLatitudesGeom.setAttribute( 'position', new THREE.Float32BufferAttribute( allLatitudesPositions, 3 ) );
-
-    var mercatorProjection = createMercatorProjectionAsPoints(vertices);
-    allLatitudesGeom.morphAttributes.position = [];
-    allLatitudesGeom.morphAttributes.position.push(new THREE.Float32BufferAttribute( mercatorProjection, 3 ));
  
     var material = new THREE.LineBasicMaterial({color: 0xaaff00, scale: 4, morphTargets: true})
     var latitudes = new THREE.Line(allLatitudesGeom, material);
-
-    latitudes.morphTargetInfluences = [];
-    latitudes.morphTargetInfluences[0] = 0;
+    addMercatorProjection(latitudes);
 
     return latitudes;
 }
@@ -69,27 +66,30 @@ var createLand = async function(){
     var geojson_multiline_land = topojson.mesh(topology, topology.objects.land)
     console.log(geojson_multiline_land)
     var geometry = new THREE.BufferGeometry();
-    var vertices = []
     var points = []
     geojson_multiline_land.coordinates.forEach(function(line) {
         d3.pairs(line.map(vertex), function(a, b) {
-            vertices.push(a, b);
             points.push(a.x, a.y, a.z)
             points.push(b.x, b.y, b.z)
         });
     });
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
 
-    var mercatorProjection = createMercatorProjectionAsPoints(vertices);
-    geometry.morphAttributes.position = [];
-    geometry.morphAttributes.position.push(new THREE.Float32BufferAttribute( mercatorProjection, 3 ));
-
     var material = new THREE.LineBasicMaterial({color: 0xff0000, morphTargets: true});
     land = new THREE.LineSegments(geometry, material);
-    land.morphTargetInfluences = [];
-    land.morphTargetInfluences[0] = 0;
+    addMercatorProjection(land);
+
     scene.add(land);
     return land;
+}
+
+var addMercatorProjection = function(mesh){
+    var positions = mesh.geometry.getAttribute ('position').array;
+    var mercatorProjection = createMercatorProjectionAsPoints(positions);
+    mesh.geometry.morphAttributes.position = [];
+    mesh.geometry.morphAttributes.position.push(new THREE.Float32BufferAttribute( mercatorProjection, 3 ));
+    mesh.updateMorphTargets();
+    mesh.morphTargetInfluences[0] = 0;
 }
 
 // Converts a point [longitude, latitude] in degrees to a THREE.Vector3.
@@ -97,11 +97,15 @@ function vertex(lonlat) {
     var lon_rad = radians(lonlat[0]),
         lat_rad = radians(lonlat[1]),
         cos_lat_rad = Math.cos(lat_rad);
-    return new THREE.Vector3(
+    var vector = new THREE.Vector3(
       radius * cos_lat_rad * Math.cos(lon_rad),
       radius * cos_lat_rad * Math.sin(lon_rad),
       radius * Math.sin(lat_rad)
     );
+    var axis = new THREE.Vector3( 1, 0, 0 );
+    var angle = - Math.PI / 2;
+    vector.applyAxisAngle( axis, angle );
+    return vector;
   }
 
 var radians = function(degree) {
@@ -119,34 +123,36 @@ var mercator_y_rad = function(latitude_rad) {
     //expects as input latitude in radians, can be converted before by radians(latitude)
     return radius * Math.log(Math.tan(Math.PI/4+latitude_rad/2))
 }
-var createMercatorProjectionAsPoints = function(vertices){
-    return createMercatorProjection(vertices, true);
+var createMercatorProjectionAsPoints = function(points){
+    return createMercatorProjection(points, true);
 }
 
-var createMercatorProjection = function(vertices, asPoints=false){
+var createMercatorProjection = function(points, asPoints=false){
     // see https://en.wikipedia.org/wiki/Mercator_projection 
     // and https://en.wikipedia.org/wiki/Polar_coordinate_system 
 
     var vertices_projected = [];
-    for ( var v = 0; v < vertices.length; v ++ ) {
-        var vertice = vertices[ v ]
+    for (var i = 0; i < points.length; i+=3) {
+        var x = points[i];
+        var y = points[i+1];
+        var z = points[i+2];
 
-        var mercator_x = mercator_x_rad(vertice.x);
-        var mercator_y = mercator_y_rad(vertice.y);
+        var mercator_x = mercator_x_rad(x);
+        var mercator_y = mercator_y_rad(y);
 
-        var z;
-        var horizontal_radius = Math.sqrt(Math.pow(vertice.x, 2) + Math.pow(vertice.z, 2));
+        var mercator_z;
+        var horizontal_radius = Math.sqrt(Math.pow(x, 2) + Math.pow(z, 2));
         if (horizontal_radius > 0.0001) {
-            z = vertice.z / horizontal_radius;
+            mercator_z = z / horizontal_radius;
             mercator_x = mercator_x / horizontal_radius;
         } else {
-            z = 1;
+            mercator_z = 1;
             console.log(horizontal_radius);
         } 
         if (asPoints) {
-            vertices_projected.push( mercator_x, mercator_y, z );
+            vertices_projected.push( mercator_x, mercator_y, mercator_z );
         } else {
-            vertices_projected.push( new THREE.Vector3( mercator_x, mercator_y, z ) );
+            vertices_projected.push( new THREE.Vector3( mercator_x, mercator_y, mercator_z ) );
         }
     }
     return vertices_projected;
