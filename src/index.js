@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import * as topojson from 'topojson'
+import * as d3 from 'd3'
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import * as dat from 'dat.gui';
 
@@ -6,14 +8,14 @@ var shouldAnimate = true;
 const radius = 1 // TODO: changing this doesn't look that well 
 const longitude_0 = 0 //Greenwich // TODO: changing this doesn't work correctly
 
-var camera, scene, pointLight, renderer, sphere, latitudes;
+var camera, scene, pointLight, renderer, sphere, latitudes, land;
 
 var createSphere = function(){
 
     var geometry = new THREE.SphereGeometry(radius-0.01, 32, 32);
     var material = new THREE.MeshPhongMaterial( { color: 0xdddddd, specular: 0x009900, shininess: 30, flatShading: true, morphTargets: true } );
 
-    var mercatorProjection = createMercatorProjection(geometry)
+    var mercatorProjection = createMercatorProjection(geometry.vertices)
     geometry.morphTargets.push( { name: "mercator projection", vertices: mercatorProjection } );
     geometry = new THREE.BufferGeometry().fromGeometry( geometry ); //the final trick
 
@@ -42,7 +44,7 @@ var createLatitudes = function(){
     allLatitudesGeom.setAttribute( 'position', new THREE.Float32BufferAttribute( allLatitudesPositions, 3 ) );
 
     allLatitudesGeom = new THREE.Geometry().fromBufferGeometry(allLatitudesGeom);
-    var mercatorProjection = createMercatorProjection(allLatitudesGeom)
+    var mercatorProjection = createMercatorProjection(allLatitudesGeom.vertices)
     allLatitudesGeom.morphTargets.push( { name: "mercator projection lines", vertices: mercatorProjection } );
     allLatitudesGeom = new THREE.BufferGeometry().fromGeometry( allLatitudesGeom ); //the final trick
  
@@ -52,12 +54,51 @@ var createLatitudes = function(){
     return latitudes;
 }
 
-var createCylinder = function(){
+var createLand = async function(){
+    // see https://bl.ocks.org/brett-miller/e55bee1bfc61af34186eae6856573d04
 
-    var geometry = new THREE.CylinderGeometry(radius, radius, radius*2, 32, 8);
-    var material = new THREE.MeshBasicMaterial( { wireframe: true, color: 0x00ff00 } );
-    return new THREE.Mesh( geometry, material );
+    var topology_url = "https://unpkg.com/world-atlas@1/world/50m.json"
+
+    var topology = await (await fetch(topology_url)).json();
+    console.log(topology.objects.land)
+
+    var geojson_multiline_land = topojson.mesh(topology, topology.objects.land)
+    console.log(geojson_multiline_land)
+    var geometry = new THREE.BufferGeometry();
+    var vertices = []
+    var points = []
+    geojson_multiline_land.coordinates.forEach(function(line) {
+        d3.pairs(line.map(vertex), function(a, b) {
+            vertices.push(a, b);
+            points.push(a.x, a.y, a.z)
+            points.push(b.x, b.y, b.z)
+        });
+    });
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+
+    var mercatorProjection = createMercatorProjectionAsPoints(vertices);
+    geometry.morphAttributes.position = [];
+    geometry.morphAttributes.position.push(new THREE.Float32BufferAttribute( mercatorProjection, 3 ));
+
+    var material = new THREE.LineBasicMaterial({color: 0xff0000, morphTargets: true});
+    land = new THREE.LineSegments(geometry, material);
+    land.morphTargetInfluences = [];
+    land.morphTargetInfluences[0] = 0;
+    scene.add(land);
+    return land;
 }
+
+// Converts a point [longitude, latitude] in degrees to a THREE.Vector3.
+function vertex(lonlat) {
+    var lon_rad = radians(lonlat[0]),
+        lat_rad = radians(lonlat[1]),
+        cos_lat_rad = Math.cos(lat_rad);
+    return new THREE.Vector3(
+      radius * cos_lat_rad * Math.cos(lon_rad),
+      radius * cos_lat_rad * Math.sin(lon_rad),
+      radius * Math.sin(lat_rad)
+    );
+  }
 
 var radians = function(degree) {
     return degree*Math.PI/180.0;
@@ -74,14 +115,17 @@ var mercator_y_rad = function(latitude_rad) {
     //expects as input latitude in radians, can be converted before by radians(latitude)
     return radius * Math.log(Math.tan(Math.PI/4+latitude_rad/2))
 }
+var createMercatorProjectionAsPoints = function(vertices){
+    return createMercatorProjection(vertices, true);
+}
 
-var createMercatorProjection = function(sphereGeometry){
+var createMercatorProjection = function(vertices, asPoints=false){
     // see https://en.wikipedia.org/wiki/Mercator_projection 
     // and https://en.wikipedia.org/wiki/Polar_coordinate_system 
 
-    var vertices = [];
-    for ( var v = 0; v < sphereGeometry.vertices.length; v ++ ) {
-        var vertice = sphereGeometry.vertices[ v ]
+    var vertices_projected = [];
+    for ( var v = 0; v < vertices.length; v ++ ) {
+        var vertice = vertices[ v ]
 
         var mercator_x = mercator_x_rad(vertice.x);
         var mercator_y = mercator_y_rad(vertice.y);
@@ -95,22 +139,18 @@ var createMercatorProjection = function(sphereGeometry){
             z = 1;
             console.log(horizontal_radius);
         } 
-
-        vertices.push( new THREE.Vector3( mercator_x, mercator_y, z ) );
+        if (asPoints) {
+            vertices_projected.push( mercator_x, mercator_y, z );
+        } else {
+            vertices_projected.push( new THREE.Vector3( mercator_x, mercator_y, z ) );
+        }
     }
-    return vertices;
+    return vertices_projected;
 }
 
 var animateRotate = function () {
     
     requestAnimationFrame( shouldAnimate? animateRotate : animateStatic);
-
-    //sphere.rotation.x += 0.01;
-    //sphere.rotation.y += 0.01;
-
-    cylinder.rotation.x += 0.001;
-    cylinder.rotation.y += 0.01;
-    cylinder.rotation.z += 0.001;
 
     var timer = 0.0001 * Date.now();
     pointLight.position.x = Math.sin( timer * 7 ) * 3;
@@ -123,13 +163,6 @@ var animateRotate = function () {
 var animateStatic = function() {
 
     requestAnimationFrame( shouldAnimate? animateRotate : animateStatic);
-
-    sphere.rotation.x = 0;
-    sphere.rotation.y = 0;
-
-    cylinder.rotation.x = 0;
-    cylinder.rotation.y = 0;
-    cylinder.rotation.z = 0;
 
     renderer.render( scene, camera );
 }
@@ -145,6 +178,7 @@ function initGUI() {
         shouldAnimate = false;
         sphere.morphTargetInfluences[ 0 ] = value;
         latitudes.morphTargetInfluences[ 0 ] = value;
+        land.morphTargetInfluences[ 0 ] = value;
     } );
     folder.open();
 }
@@ -158,11 +192,12 @@ sphere = createSphere();
 sphere.renderOrder = -1;
 scene.add( sphere );
 
-var cylinder = createCylinder();
-//scene.add( cylinder );
 
 latitudes = createLatitudes();
 scene.add(latitudes);
+
+//async
+createLand();
 
 scene.add( new THREE.AmbientLight( 0x8FBCD4, 0.4 ) );
 //scene.add( new THREE.DirectionalLight( 0xffffff, 0.125 ));
