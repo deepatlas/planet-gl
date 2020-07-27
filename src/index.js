@@ -8,19 +8,16 @@ var shouldAnimate = true;
 const radius = 1 // TODO: changing this doesn't look that well 
 const longitude_0 = 0 //Greenwich // TODO: changing this doesn't work correctly
 
-var camera, scene, pointLight, renderer, sphere, latitudes, land;
+var camera, scene, pointLight, renderer, sphere, latitudes, land
+var positionMarker, userPosition, mercatorPosition;
+var winterSummer = 0;
 
 var createSphere = function(){
 
     var geometry = new THREE.SphereGeometry(radius-0.01, 32, 32);
-    var material = new THREE.MeshPhongMaterial( { color: 0xdddddd, specular: 0x009900, shininess: 30, flatShading: true, morphTargets: true } );
+    var material = new THREE.MeshPhongMaterial( { color: 0xdddddd, morphTargets: true } );
 
-    var points = [];
-    for ( var v = 0; v < geometry.vertices.length; v ++ ) {
-        var vertex = geometry.vertices[v];
-        points.push(vertex.x, vertex.y, vertex.z);
-    }
-    var mercatorProjection = createMercatorProjection(points);
+    var mercatorProjection = createMercatorProjectionFromVertices(geometry.vertices);
     geometry.morphTargets.push( { name: "mercator projection", vertices: mercatorProjection } );
     geometry = new THREE.BufferGeometry().fromGeometry( geometry ); //the final trick
 
@@ -127,10 +124,18 @@ var createMercatorProjectionAsPoints = function(points){
     return createMercatorProjection(points, true);
 }
 
+var createMercatorProjectionFromVertices = function(vertices){
+    var points = [];
+    for ( var v = 0; v < vertices.length; v ++ ) {
+        var vertex = vertices[v];
+        points.push(vertex.x, vertex.y, vertex.z);
+    }
+    return createMercatorProjection(points);
+}
+
 var createMercatorProjection = function(points, asPoints=false){
     // see https://en.wikipedia.org/wiki/Mercator_projection 
     // and https://en.wikipedia.org/wiki/Polar_coordinate_system 
-
     var vertices_projected = [];
     for (var i = 0; i < points.length; i+=3) {
         var x = points[i];
@@ -147,7 +152,7 @@ var createMercatorProjection = function(points, asPoints=false){
             mercator_x = mercator_x / horizontal_radius;
         } else {
             mercator_z = 1;
-            console.log(horizontal_radius);
+            //console.log(horizontal_radius);
         } 
         if (asPoints) {
             vertices_projected.push( mercator_x, mercator_y, mercator_z );
@@ -158,14 +163,15 @@ var createMercatorProjection = function(points, asPoints=false){
     return vertices_projected;
 }
 
+
 var animateRotate = function () {
     
     requestAnimationFrame( shouldAnimate? animateRotate : animateStatic);
 
-    var timer = 0.0001 * Date.now();
-    pointLight.position.x = Math.sin( timer * 7 ) * 3;
-    pointLight.position.y = Math.cos( timer * 5 );
-    pointLight.position.z = Math.cos( timer * 3 ) * 3;
+    var timer = 0.001 * Date.now();
+    pointLight.position.x = Math.sin( timer ) * 4;
+    pointLight.position.z = Math.cos( timer ) * 4;
+
 
     renderer.render( scene, camera );
 };
@@ -180,18 +186,35 @@ var animateStatic = function() {
 function initGUI() {
     // Set up dat.GUI to control targets
     var params = {
-        Mercator: 0
+        Mercator: 0,
+        WinterSummer: false
     };
     var gui = new dat.GUI();
     var folder = gui.addFolder( 'Projection' );
     folder.add( params, 'Mercator', 0, 1 ).step( 0.01 ).onChange( function ( value ) {
-        shouldAnimate = false;
+        //shouldAnimate = false;
         sphere.morphTargetInfluences[ 0 ] = value;
         latitudes.morphTargetInfluences[ 0 ] = value;
         land.morphTargetInfluences[ 0 ] = value;
+        console.log(positionMarker.position.x)
+        positionMarker.position.x = userPosition.x + value * (mercatorPosition.x - userPosition.x);
+        positionMarker.position.y = userPosition.y + value * (mercatorPosition.y - userPosition.y);
+        positionMarker.position.z = userPosition.z + value * (mercatorPosition.z - userPosition.z);
+
     } );
     folder.open();
+    var folderLight = gui.addFolder( 'Light' );
+    folderLight.add( {WinterSummer: 0}, 'WinterSummer', 0, 1 ).step( 0.01 ).onChange( function ( value ) {
+        winterSummer = value;
+        const earthInclinnationAngle = Math.PI / 3;
+        const angleWinterSummer = - earthInclinnationAngle + 2 * winterSummer * earthInclinnationAngle;
+        const s = Math.sin( angleWinterSummer / 2 );
+        pointLight.position.y = s;
+    
+    } );
+    folderLight.open();
 }
+
 
 camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
 camera.position.z = 5;
@@ -213,6 +236,7 @@ scene.add( new THREE.AmbientLight( 0x8FBCD4, 0.4 ) );
 //scene.add( new THREE.DirectionalLight( 0xffffff, 0.125 ));
 
 pointLight = new THREE.PointLight( 0xffffff, 1 );
+
 scene.add( pointLight );
 pointLight.add( new THREE.Mesh( new THREE.SphereBufferGeometry( 0.1, 8, 8 ), new THREE.MeshBasicMaterial( { color: 0xffffff } ) ) );
 
@@ -227,6 +251,32 @@ document.body.appendChild( renderer.domElement );
 
 new OrbitControls( camera, renderer.domElement );
 
+if ("geolocation" in navigator) {
+    navigator.geolocation.getCurrentPosition(
+        function(position){
+            console.log(position);
+            userPosition = vertex([position.coords.longitude, position.coords.latitude])
+            console.log(userPosition)
+            mercatorPosition = createMercatorProjectionFromVertices([userPosition])[0];
+            console.log(mercatorPosition)
+            
+            var markerGeometry = new THREE.SphereGeometry( 0.01, 8, 8 );        
+            positionMarker = new THREE.Mesh(markerGeometry , new THREE.MeshBasicMaterial( { color: 0xff00ff } ) )
+            positionMarker.position.x = userPosition.x;
+            positionMarker.position.y = userPosition.y;
+            positionMarker.position.z = userPosition.z;
+            scene.add(positionMarker);
 
+            camera.position.x = userPosition.x * 2
+            camera.position.y = userPosition.y * 2
+            camera.position.z = userPosition.z * 2;
+            camera.lookAt ( userPosition )
+            //interesting also https://stackoverflow.com/questions/14813902/three-js-get-the-direction-in-which-the-camera-is-looking
+
+        }, 
+        function(error) { console.log(error.message) });
+} else { 
+    console.log("the browser doesn't support geolocation");
+}
 
 
