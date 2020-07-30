@@ -3,6 +3,11 @@ import * as topojson from 'topojson'
 import * as d3 from 'd3'
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import * as dat from 'dat.gui';
+//import space from './hubble_extreme_deep_field.jpg'
+import space from './images/esa_gaia_milkyway_300_contrast.png'
+//import earthspec from './earthspec1k.jpg'
+import earthbump from './images/earthbump1k.jpg'
+import earthmap from './images/earthmap1k.jpg'
 
 var shouldAnimate = true;
 const radius = 1 // TODO: changing this doesn't look that well 
@@ -14,8 +19,15 @@ var winterSummer = 0;
 
 var createSphere = function(){
 
-    var geometry = new THREE.SphereGeometry(radius-0.01, 32, 32);
+    var geometry = new THREE.SphereGeometry(radius-0.001, 32, 32);
+
     var material = new THREE.MeshPhongMaterial( { color: 0xdddddd, morphTargets: true } );
+
+    //see http://planetpixelemporium.com/planets.html and https://github.com/jeromeetienne/threex.planets/ 
+    // for earth & planet textures
+    material.map    = THREE.ImageUtils.loadTexture(earthmap)
+    material.bumpMap    = THREE.ImageUtils.loadTexture(earthbump)
+    material.bumpScale = 0.05
 
     var mercatorProjection = createMercatorProjectionFromVertices(geometry.vertices);
     geometry.morphTargets.push( { name: "mercator projection", vertices: mercatorProjection } );
@@ -45,7 +57,7 @@ var createLatitudes = function(){
     //allLatitudesPositions = allLatitudesPositions.slice(0, -3);
     allLatitudesGeom.setAttribute( 'position', new THREE.Float32BufferAttribute( allLatitudesPositions, 3 ) );
  
-    var material = new THREE.LineBasicMaterial({color: 0xaaff00, scale: 4, morphTargets: true})
+    var material = new THREE.LineBasicMaterial({color: 0x20708b, scale: 4, morphTargets: true})
     var latitudes = new THREE.Line(allLatitudesGeom, material);
     addMercatorProjection(latitudes);
 
@@ -72,13 +84,28 @@ var createLand = async function(){
     });
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
 
-    var material = new THREE.LineBasicMaterial({color: 0xff0000, morphTargets: true});
+    var material = new THREE.LineBasicMaterial({color: 0x666666, morphTargets: true});
     land = new THREE.LineSegments(geometry, material);
     addMercatorProjection(land);
 
     scene.add(land);
+
     return land;
 }
+
+var createSpace = function(){
+    //var geometry = new THREE.SphereGeometry(100, 32, 32);
+    const boxSize = 1000;
+    var geometry = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
+    const spaceTexture = new THREE.TextureLoader().load(space);
+    var material = new THREE.MeshBasicMaterial({map : spaceTexture, side: THREE.BackSide});
+
+    var spaceMesh = new THREE.Mesh( geometry, material );
+    scene.add(spaceMesh)
+    return spaceMesh;
+
+}
+
 
 var addMercatorProjection = function(mesh){
     var positions = mesh.geometry.getAttribute ('position').array;
@@ -231,6 +258,8 @@ scene.add(latitudes);
 
 //async
 createLand();
+
+createSpace();
 
 scene.add( new THREE.AmbientLight( 0x8FBCD4, 0.4 ) );
 //scene.add( new THREE.DirectionalLight( 0xffffff, 0.125 ));

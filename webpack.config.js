@@ -5,7 +5,17 @@ module.exports = {
   output: {
     filename: 'main.js',
     path: path.resolve(__dirname, 'assets'),
-    publicPath: "/planet-gl/"
+    //publicPath: "/planet-gl/"
+  },
+  module: {
+    rules: [
+      {
+        test: /\.(png|svg|jpg|gif)$/,
+        use: [
+        'file-loader',
+        ],
+      },
+    ]
   },
   devServer: {
     contentBase: './assets',
