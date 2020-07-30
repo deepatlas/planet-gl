@@ -8,12 +8,13 @@ import space from './images/esa_gaia_milkyway_300_contrast.png'
 //import earthspec from './earthspec1k.jpg'
 import earthbump from './images/earthbump1k.jpg'
 import earthmap from './images/earthmap1k.jpg'
+import glow from './images/glow.png'
 
 var shouldAnimate = true;
 const radius = 1 // TODO: changing this doesn't look that well 
 const longitude_0 = 0 //Greenwich // TODO: changing this doesn't work correctly
 
-var camera, scene, pointLight, renderer, sphere, latitudes, land
+var camera, scene, sunLight, renderer, sphere, latitudes, land, earthObjects, earthGroup
 var positionMarker, userPosition, mercatorPosition;
 var winterSummer = 0;
 
@@ -23,7 +24,7 @@ var createSphere = function(){
 
     var material = new THREE.MeshPhongMaterial( { color: 0xdddddd, morphTargets: true } );
 
-    //see http://planetpixelemporium.com/planets.html and https://github.com/jeromeetienne/threex.planets/ 
+    // see http://planetpixelemporium.com/planets.html and https://github.com/jeromeetienne/threex.planets/ 
     // for earth & planet textures
     material.map    = THREE.ImageUtils.loadTexture(earthmap)
     material.bumpMap    = THREE.ImageUtils.loadTexture(earthbump)
@@ -88,7 +89,7 @@ var createLand = async function(){
     land = new THREE.LineSegments(geometry, material);
     addMercatorProjection(land);
 
-    scene.add(land);
+    earthObjects.add(land);
 
     return land;
 }
@@ -101,7 +102,7 @@ var createSpace = function(){
     var material = new THREE.MeshBasicMaterial({map : spaceTexture, side: THREE.BackSide});
 
     var spaceMesh = new THREE.Mesh( geometry, material );
-    scene.add(spaceMesh)
+
     return spaceMesh;
 
 }
@@ -195,9 +196,10 @@ var animateRotate = function () {
     
     requestAnimationFrame( shouldAnimate? animateRotate : animateStatic);
 
-    var timer = 0.001 * Date.now();
-    pointLight.position.x = Math.sin( timer ) * 4;
-    pointLight.position.z = Math.cos( timer ) * 4;
+    //var timer = 0.001 * Date.now();
+    //pointLight.position.x = Math.sin( timer ) * 4;
+    //pointLight.position.z = Math.cos( timer ) * 4;
+    earthGroup.rotation.y += 0.001;
 
 
     renderer.render( scene, camera );
@@ -236,7 +238,7 @@ function initGUI() {
         const earthInclinnationAngle = Math.PI / 3;
         const angleWinterSummer = - earthInclinnationAngle + 2 * winterSummer * earthInclinnationAngle;
         const s = Math.sin( angleWinterSummer / 2 );
-        pointLight.position.y = s;
+        sunLight.position.y = s;
     
     } );
     folderLight.open();
@@ -248,38 +250,64 @@ camera.position.z = 5;
 
 scene = new THREE.Scene();
 
+// ### EARTH
+earthObjects = new THREE.Object3D();
+
 sphere = createSphere();
 sphere.renderOrder = -1;
-scene.add( sphere );
-
+earthObjects.add( sphere );
 
 latitudes = createLatitudes();
-scene.add(latitudes);
+earthObjects.add(latitudes);
+
+var spaceMesh = createSpace();
+earthObjects.add(spaceMesh);
 
 //async
 createLand();
 
-createSpace();
+earthGroup = new THREE.Group();
+earthGroup.add( earthObjects );
+scene.add( earthGroup );
 
-scene.add( new THREE.AmbientLight( 0x8FBCD4, 0.4 ) );
-//scene.add( new THREE.DirectionalLight( 0xffffff, 0.125 ));
 
-pointLight = new THREE.PointLight( 0xffffff, 1 );
+// ### LIGHTS
+scene.add( new THREE.AmbientLight( 0x8FBCD4, 0.2 ) );
 
-scene.add( pointLight );
-pointLight.add( new THREE.Mesh( new THREE.SphereBufferGeometry( 0.1, 8, 8 ), new THREE.MeshBasicMaterial( { color: 0xffffff } ) ) );
+var sunColor = 0xffcf4a
+sunLight = new THREE.PointLight( sunColor, 1.5 );
+sunLight.position.x = 8;
+sunLight.position.y = 8;
+scene.add( sunLight );
 
+//add sun sphere
+
+var sun = new THREE.Mesh( new THREE.SphereBufferGeometry( 0.1, 8, 8 ), new THREE.MeshPhongMaterial( { color: sunColor } ) )
+// SUPER SIMPLE GLOW EFFECT, see http://stemkoski.github.io/Three.js/Simple-Glow.html
+// use sprite because it appears the same from all angles
+var spriteMaterial = new THREE.SpriteMaterial( 
+    { 
+        map: new THREE.ImageUtils.loadTexture( glow ), 
+        color: sunColor, transparent: false, blending: THREE.AdditiveBlending
+    });
+var sprite = new THREE.Sprite( spriteMaterial );
+sprite.scale.set(3, 3, 3);
+sun.add(sprite); // this centers the glow at the mesh
+
+sunLight.add( sprite );
+    
+// ### GUI
 initGUI()
 
+// ### RENDERER
 renderer = new THREE.WebGLRenderer();
 renderer.setSize( window.innerWidth, window.innerHeight );
-
 shouldAnimate ? animateRotate() : animateStatic();
-
 document.body.appendChild( renderer.domElement );
 
 new OrbitControls( camera, renderer.domElement );
 
+// ### GEOLOCATION
 if ("geolocation" in navigator) {
     navigator.geolocation.getCurrentPosition(
         function(position){
@@ -294,7 +322,7 @@ if ("geolocation" in navigator) {
             positionMarker.position.x = userPosition.x;
             positionMarker.position.y = userPosition.y;
             positionMarker.position.z = userPosition.z;
-            scene.add(positionMarker);
+            earthObjects.add(positionMarker);
 
             camera.position.x = userPosition.x * 2
             camera.position.y = userPosition.y * 2
