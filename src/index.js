@@ -10,12 +10,13 @@ import earthbump from './images/earthbump1k.jpg'
 import earthmap from './images/earthmap1k.jpg'
 import glow from './images/glow.png'
 
-var shouldAnimate = true;
+var shouldAnimate = false;
 const radius = 1 // TODO: changing this doesn't look that well 
 const longitude_0 = 0 //Greenwich // TODO: changing this doesn't work correctly
 
-var camera, scene, sunLight, renderer, sphere, latitudes, land, earthObjects, earthGroup
-var positionMarker, userPosition, mercatorPosition;
+var camera, scene, sunLight, renderer, sphere, atmosphere, latitudes, land, earthObjects, earthGroup
+var userLatitude, userLongitude, positionMarker, userPosition, mercatorPosition;
+var compass, deviceOrientation_beta_y, deviceOrientation_gamma_x, deviceOrientation_alpha_z;
 var winterSummer = 0;
 
 var createSphere = function(){
@@ -36,6 +37,15 @@ var createSphere = function(){
 
     return new THREE.Mesh( geometry, material );
 }
+
+/**
+var createAtmosphere = function(){
+    var geometry = new THREE.SphereGeometry(radius + 0.05, 32, 32);
+    var material = new THREE.MeshPhongMaterial ({ color: 0x98e0fa, opacity: 0.3, transparent: true });
+    var mesh = new THREE.Mesh (geometry, material);
+    return mesh;
+}
+ */
 
 var createLatitudes = function(){
     // see https://stackoverflow.com/questions/44286821/three-js-spherebufferedgeometry-without-triangulated-mesh
@@ -107,7 +117,6 @@ var createSpace = function(){
 
 }
 
-
 var addMercatorProjection = function(mesh){
     var positions = mesh.geometry.getAttribute ('position').array;
     var mercatorProjection = createMercatorProjectionAsPoints(positions);
@@ -115,6 +124,13 @@ var addMercatorProjection = function(mesh){
     mesh.geometry.morphAttributes.position.push(new THREE.Float32BufferAttribute( mercatorProjection, 3 ));
     mesh.updateMorphTargets();
     mesh.morphTargetInfluences[0] = 0;
+}
+
+var earthDirection = function(vector) {
+    var axis = new THREE.Vector3( 1, 0, 0 );
+    var angle = - Math.PI / 2;
+    vector.applyAxisAngle( axis, angle );
+    return vector;
 }
 
 // Converts a point [longitude, latitude] in degrees to a THREE.Vector3.
@@ -127,10 +143,7 @@ function vertex(lonlat) {
       radius * cos_lat_rad * Math.sin(lon_rad),
       radius * Math.sin(lat_rad)
     );
-    var axis = new THREE.Vector3( 1, 0, 0 );
-    var angle = - Math.PI / 2;
-    vector.applyAxisAngle( axis, angle );
-    return vector;
+    return earthDirection(vector);
   }
 
 var radians = function(degree) {
@@ -147,7 +160,17 @@ var mercator_x_rad = function(longitude_rad) {
 var mercator_y_rad = function(latitude_rad) {
     //expects as input latitude in radians, can be converted before by radians(latitude)
     return radius * Math.log(Math.tan(Math.PI/4+latitude_rad/2))
+    //same result would be be
+    //radius * Math.atanh(Math.sin(latitude_rad))    
 }
+
+var inverse_mercator_y = function(y) {
+    //also called Gudermann function
+    return 2*(Math.atan(Math.exp(y/radius))-Math.PI/4)
+    //same result would be be
+    //Math.asin(Math.tanh(y/radius))    
+}
+
 var createMercatorProjectionAsPoints = function(points){
     return createMercatorProjection(points, true);
 }
@@ -229,6 +252,7 @@ function initGUI() {
         positionMarker.position.x = userPosition.x + value * (mercatorPosition.x - userPosition.x);
         positionMarker.position.y = userPosition.y + value * (mercatorPosition.y - userPosition.y);
         positionMarker.position.z = userPosition.z + value * (mercatorPosition.z - userPosition.z);
+        compass.position.copy(positionMarker.position)
 
     } );
     folder.open();
@@ -257,6 +281,9 @@ sphere = createSphere();
 sphere.renderOrder = -1;
 earthObjects.add( sphere );
 
+//atmosphere = createAtmosphere();
+//earthObjects.add( atmosphere );
+
 latitudes = createLatitudes();
 earthObjects.add(latitudes);
 
@@ -269,7 +296,6 @@ createLand();
 earthGroup = new THREE.Group();
 earthGroup.add( earthObjects );
 scene.add( earthGroup );
-
 
 // ### LIGHTS
 scene.add( new THREE.AmbientLight( 0x8FBCD4, 0.2 ) );
@@ -312,6 +338,8 @@ if ("geolocation" in navigator) {
     navigator.geolocation.getCurrentPosition(
         function(position){
             console.log(position);
+            userLatitude = position.coords.latitude;
+            userLongitude = position.coords.longitude;
             userPosition = vertex([position.coords.longitude, position.coords.latitude])
             console.log(userPosition)
             mercatorPosition = createMercatorProjectionFromVertices([userPosition])[0];
@@ -330,10 +358,70 @@ if ("geolocation" in navigator) {
             camera.lookAt ( userPosition )
             //interesting also https://stackoverflow.com/questions/14813902/three-js-get-the-direction-in-which-the-camera-is-looking
 
+
+            createCompass()
+
         }, 
         function(error) { console.log(error.message) });
 } else { 
     console.log("the browser doesn't support geolocation");
 }
 
+var createCompass = function(){
+    var compassDirection = new THREE.Vector3( 1, 1, 1 );
+
+    //normalize the direction vector (convert to vector of length 1)
+    compassDirection.normalize();
+
+    var origin = new THREE.Vector3( userPosition.x, userPosition.y, userPosition.z );
+    //var origin = new THREE.Vector3( 0, 0, 0 );
+    var length = 1;
+    var hex = 0xffff00;
+
+    compass = new THREE.ArrowHelper( compassDirection, origin, length, hex );
+    //hide first
+    compass.setLength(0, 0, 0)
+    scene.add( compass );
+}
+
+// ### DEVICE ORIENTATION
+if (window.DeviceOrientationEvent) {
+		
+    window.addEventListener("deviceorientation", function(event) 
+    {
+        deviceOrientation_beta_y = radians(event.beta);
+        deviceOrientation_gamma_x = radians(event.gamma);
+        deviceOrientation_alpha_z = radians(event.alpha);
+
+        // ### Compass
+
+        //compute new latitude/longitude from userPosition and orientation and distance
+        // see also https://www.movable-type.co.uk/scripts/latlong.html
+        var R = 6378.1 // Radius of the Earth in kilometer
+        var distance = 15 //in kilometer
+        var lat1 = radians(userLatitude)
+        var lon1 = radians(userLongitude)
+        var bearing = deviceOrientation_alpha_z
+        //console.log("lat: " + lat1 + ",lon: " + lon1 + "bearing: " + bearing)
+        var lat2 = Math.asin( Math.sin(lat1) * Math.cos(distance/R) + Math.cos(lat1) * Math.sin(distance/R) * Math.cos(bearing))
+        var lon2 = lon1 + Math.atan2(Math.sin(bearing) * Math.sin(distance/R) * Math.cos(lon1), Math.cos(distance/R) - Math.sin(lon1)*Math.sin(lat2))
+        //console.log(lat2 + "," + lon2)
+        var compassHead = vertex([degree(lon2), degree(lat2)])
+        var compassDirection = compassHead.clone().sub(userPosition)
+        //console.log(compassDirection)
+ 
+
+        //normalize the direction vector (convert to vector of length 1)
+        compassDirection.normalize();
+    
+        compass.setDirection(compassDirection)
+        compass.setLength(0.12, 0.1, 0.05)
+        
+    }, true);
+    
+    
+    
+} else {
+  console.log("Sorry, your browser doesn't support Device Orientation");
+} 
 
